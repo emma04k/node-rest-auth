@@ -5,9 +5,11 @@
 
 .env
 
-mongo/
-postgres/
+/mongo
+/postgres
 node_modules/
 dist/
 build/
 coverage/
+
+.idea/
