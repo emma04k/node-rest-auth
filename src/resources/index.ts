@@ -1,0 +1,1 @@
+export * from './emailTemplates/email-validation.template';

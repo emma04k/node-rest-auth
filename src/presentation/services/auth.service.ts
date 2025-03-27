@@ -1,10 +1,14 @@
 import { CustomError, LoginUserDto, RegisterUserDto, UserEntity } from "../../domain";
 import { UserModel } from "../../data";
-import { BcryptAdapter, JwtAdapter } from "../../config";
+import { BcryptAdapter, envs, JwtAdapter } from "../../config";
+import { EmailService } from "./email.service";
+import { emailTemplate } from "../../resources";
 
 
 export class AuthService {
-    constructor() {}
+    constructor(
+        private readonly emailService: EmailService,
+    ) {}
 
     public async registerUser(dto:RegisterUserDto){
 
@@ -16,14 +20,18 @@ export class AuthService {
             // Encriptar el password
             user.password = BcryptAdapter.hash(dto.password);
             await user.save();
-            //JWT <----- Para mantener la autenticación del usuario
 
             //email de confirmación
-
+            await this.sendEmailValidationLink(user.email,user.name);
             const {password, ...userEntity} = UserEntity.fromObject(user);
+
+            //JWT <----- Para mantener la autenticación del usuario
+            const token = await JwtAdapter.generateToke({id: user.id});
+            if(!token) throw ('Error while generating JWT');
+
             return {
                 user:userEntity,
-                token:'ABC'
+                token: token
             };
         }catch ( error ){
             throw CustomError.internalServer(`${error}`);
@@ -41,13 +49,53 @@ export class AuthService {
 
         const {password, ...userEntity} = UserEntity.fromObject(user);
 
-        const token = await JwtAdapter.generateToke({id: user.id, email: user.email});
+        const token = await JwtAdapter.generateToke({id: user.id});
         if(!token) throw CustomError.internalServer('Error while generating JWT');
-
 
         return {
             user:userEntity,
             token:token
         }
+    }
+
+    public async validateEmail(token:string){
+        if(!token) throw CustomError.badRequest('token is required');
+        const payload = await JwtAdapter.validateToken(token);
+        if (!payload) throw CustomError.unauthorized('invalid Token');
+
+        const {email} = payload as { email: string };
+        if (!email) throw CustomError.internalServer('email not in token');
+
+        const user  = await UserModel.findOne({email : email});
+
+        if(!user) throw CustomError.internalServer('email not found');
+
+        user.emailValidated = true;
+
+        await user.save();
+
+        return true;
+
+    }
+
+    private sendEmailValidationLink = async (email:string, name:string) =>{
+        const token = await JwtAdapter.generateToke({email});
+        if(!token) throw CustomError.internalServer('Error while generating JWT');
+
+        const link = `${envs.WEB_SERVICE_URL}/auth/validate-email/${token}`;
+        const htmlBody = emailTemplate.replace('[USER_NAME]',name).replace('[VALIDATION_LINK]', link);
+
+        const options = {
+            to:email,
+            subject: 'Validate you email',
+            htmlBody: htmlBody,
+        }
+
+        const isSent = await this.emailService.sendEmail(options);
+
+        if (!isSent) throw CustomError.internalServer('Error while sending email');
+
+        return true;
+
     }
 }
