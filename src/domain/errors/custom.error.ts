@@ -1,5 +1,3 @@
-import express from "express";
-
 
 export class CustomError extends Error {
     constructor(
@@ -24,8 +22,8 @@ export class CustomError extends Error {
     static notFound(message: string) {
         return new CustomError(message,404);
     }
-    static internalServer(message: string) {
-        return new CustomError(message,500);
+    static internalServer() {
+        return new CustomError('Internal Server Error',500);
     }
 
 
